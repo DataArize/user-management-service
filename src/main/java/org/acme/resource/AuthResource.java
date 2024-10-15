@@ -43,5 +43,21 @@ public class AuthResource {
                 });
     }
 
+    @POST
+    @Path("/login")
+    @WithTransaction
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> loginUser(@Valid Auth authRequest) {
+        return authService.authenticateUser(authRequest)
+                .onItem().transform(success -> Response.status(Response.Status.OK).entity(success).build())
+                .onFailure()
+                .recoverWithItem(ex -> {
+                    log.error("Invalid login credentials, email: {}, Exception: {}", authRequest.getEmail(), ex.getMessage(), ex);
+                    ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), Response.Status.BAD_REQUEST);
+                    return Response.status(Response.Status.BAD_REQUEST).entity(errorResponse).build();
+                });
+    }
+
 
 }

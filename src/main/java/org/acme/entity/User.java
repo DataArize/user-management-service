@@ -28,9 +28,7 @@ public class User extends PanacheEntity {
     @Email
     @Column(unique = true, nullable = false)
     private String email;
-    @Column(nullable = false)
-    @Length(min = 8, max = 255)
-    @Pattern(regexp = DataValidation.PASSWORD_PATTERN, message = DataValidation.PASSWORD_REQUIREMENTS_MESSAGE)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String passwordHash;
     @Column(nullable = false, length = 100)
     private String firstName;
@@ -45,7 +43,7 @@ public class User extends PanacheEntity {
     private LocalDateTime createAt = LocalDateTime.now();
     private LocalDateTime lastLogin;
 
-    @ManyToMany(cascade = CascadeType.PERSIST)
+    @ManyToMany(cascade = CascadeType.PERSIST, fetch = FetchType.EAGER)
     @JoinTable(
             name = "user_roles",
             schema = "user_management",
