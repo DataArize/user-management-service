@@ -1,10 +1,7 @@
 package org.acme.entity;
 
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
-import jakarta.persistence.Entity;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
@@ -19,15 +16,14 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 public class LoginAttempts extends PanacheEntity {
 
-    @ManyToOne()
-    @JoinColumn(name = "loginAttempts")
-    private User users;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
     @CreationTimestamp
     private LocalDateTime attemptTime;
     private boolean success;
 
-    public LoginAttempts(User user, boolean attemptType) {
-        this.users = user;
+    public LoginAttempts(Long userId, boolean attemptType) {
+        this.userId = userId;
         this.success = attemptType;
     }
 }

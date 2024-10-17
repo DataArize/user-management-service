@@ -48,13 +48,6 @@ public class User extends PanacheEntity {
     )
     private List<Role> roles = new ArrayList<>();
 
-    @OneToMany(fetch = FetchType.LAZY, mappedBy = "users")
-    private List<LoginAttempts> loginAttempts;
-
-    @OneToMany(fetch = FetchType.LAZY, mappedBy = "users")
-    private List<Token> tokens;
-
-
     public User() {
         this.roles.add(new Role(AccountRole.USER.name()));
     }

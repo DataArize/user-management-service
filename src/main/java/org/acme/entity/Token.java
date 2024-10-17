@@ -15,15 +15,14 @@ import java.time.LocalDateTime;
 @Table(name = "tokens", schema = "user_management")
 public class Token extends PanacheEntity {
 
-    @ManyToOne()
-    @JoinColumn(name = "tokens")
-    private User users;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
     @Column(columnDefinition = "TEXT")
     private String refreshToken;
     private LocalDateTime expiresAt;
 
-    public Token(User user, String refreshToken, LocalDateTime expiresAt) {
-        this.users = user;
+    public Token(Long userId, String refreshToken, LocalDateTime expiresAt) {
+        this.userId = userId;
         this.refreshToken = refreshToken;
         this.expiresAt = expiresAt;
     }

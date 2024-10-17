@@ -3,10 +3,10 @@ package org.acme.service;
 import com.password4j.Password;
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.hibernate.reactive.panache.PanacheEntityBase;
-import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
+import io.smallrye.jwt.auth.principal.JWTParser;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.transaction.Transactional;
+import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.acme.constants.AttemptType;
 import org.acme.constants.Entity;
@@ -14,17 +14,12 @@ import org.acme.constants.Errors;
 import org.acme.entity.LoginAttempts;
 import org.acme.entity.Token;
 import org.acme.entity.User;
-import org.acme.exceptions.AccountDoesNotExistsException;
-import org.acme.exceptions.InvalidLoginCredentialsException;
-import org.acme.exceptions.RegistrationFailedException;
-import org.acme.exceptions.UnableToPresistException;
+import org.acme.exceptions.*;
 import org.acme.model.Auth;
-import org.acme.model.AuthResponse;
+import org.acme.model.AuthToken;
 import org.acme.utils.JwtUtils;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.hibernate.HibernateException;
 import org.hibernate.exception.ConstraintViolationException;
-import org.jose4j.jwk.Use;
 
 import java.time.LocalDateTime;
 
@@ -33,44 +28,63 @@ import java.time.LocalDateTime;
 public class AuthService {
 
     @ConfigProperty(name = "jwt.expiration")
-    private Long expiration;
+    private Long expirationDays;
+    private final JWTParser jwtParser;
 
-    public Uni<Auth> createUser(Auth authRequest) {
-        User user = new User(authRequest);
-        String passwordHash = Password.hash(authRequest.getPassword()).withArgon2().getResult();
-        user.setPasswordHash(passwordHash);
-        return Panache.withTransaction(() -> PanacheEntityBase.persist(user))
-            .onItem().transform(success -> {
-                log.info("Successfully created user, email: {}", authRequest.getEmail());
-                return authRequest;
-            })
-                .onFailure(ConstraintViolationException.class)
-                .transform(ex -> {
-                    log.error("User already exists, email: {}", user.getEmail());
-                    throw new AccountDoesNotExistsException(Errors.ACCOUNT_ALREADY_EXISTS + user.getEmail());
-                });
+    @Inject
+    public AuthService(JWTParser jwtParser) {
+        this.jwtParser = jwtParser;
     }
 
-    public Uni<AuthResponse> authenticateUser(Auth authRequest) {
+    public Uni<Auth> createUser(Auth authRequest) {
+        return hashPassword(authRequest.getPassword())
+                .onItem().transform(passwordHash -> {
+                    User user = new User(authRequest);
+                    user.setPasswordHash(passwordHash);
+                    return user;
+                })
+                .onItem().transformToUni(this::persistUser);
+    }
+
+    private Uni<Auth> persistUser(User user) {
+        return Panache.withTransaction(() -> User.persist(user))
+                .onItem().transform(success -> {
+                    log.info("Successfully created user, email: {}", user.getEmail());
+                    return new Auth(user);
+                })
+                .onFailure(ConstraintViolationException.class)
+                .transform(ex -> handleUserCreationError(user.getEmail()));
+    }
+
+    private Throwable handleUserCreationError(String email) {
+        log.error("User already exists, email: {}", email);
+        throw new AccountDoesNotExistsException(Errors.ACCOUNT_ALREADY_EXISTS + email);
+    }
+
+    private Uni<String> hashPassword(String password) {
+        return Uni.createFrom().item(() -> Password.hash(password).withArgon2().getResult());
+    }
+
+    public Uni<AuthToken> authenticateUser(Auth authRequest) {
         return findByUsernameAndPassword(authRequest)
-                .onItem().transformToUni(user -> {
-                    LocalDateTime expirationTime = LocalDateTime.now().plusSeconds(expiration * 24 * 30);
-                    String accessToken = JwtUtils.generateAccessToken(user, expiration);
-                    String refreshToken = JwtUtils.generateRefreshToken(user, expiration * 24 * 30);
-                    return persistToken(user, refreshToken, expirationTime)
-                            .onItem().transform(success -> {
-                                AuthResponse authResponse = new AuthResponse();
-                                authResponse.setAccessToken(accessToken);
-                                authResponse.setRefreshToken(refreshToken);
-                                authResponse.setExpiresIn(expiration);
-                                return authResponse;
-                            });
-                });
+                .onItem().transformToUni(this::generateAndPersistTokens);
+    }
+
+    private Uni<AuthToken> generateTokens(User user) {
+        String accessToken = JwtUtils.generateAccessToken(user, expirationDays);
+        String refreshToken = JwtUtils.generateRefreshToken(user, expirationDays * 24 * 60 * 60);
+        return Uni.createFrom().item(() -> new AuthToken(accessToken, refreshToken, expirationDays));
+    }
+
+    private Uni<AuthToken> generateAndPersistTokens(User user) {
+        LocalDateTime expirationTime = LocalDateTime.now().plusSeconds(expirationDays * 24 * 60 * 60);
+        return generateTokens(user)
+                .onItem().transformToUni(tokens -> persistToken(user.id, tokens.getRefreshToken(), expirationTime)
+                        .onItem().transform(success -> tokens));
     }
 
     public Uni<User> findByUsernameAndPassword(Auth authRequest) {
-
-        return User.find(Entity.EMAIL, authRequest.getEmail()).firstResult()
+        return Panache.withTransaction(() -> User.find(Entity.EMAIL, authRequest.getEmail()).firstResult())
                 .onItem().ifNotNull().transformToUni(entity -> {
                     User user = (User) entity;
                     return validatePassword(authRequest.getPassword(), user)
@@ -84,40 +98,53 @@ public class AuthService {
 
     private Uni<Boolean> validatePassword(String password, User user) {
         boolean validPassword = Password.check(password, user.getPasswordHash()).withArgon2();
-        if (validPassword) {
-            return persistLoginAttempt(user, AttemptType.SUCCESS)
-                    .onItem().transform(ignored -> true);
-        } else {
-            return persistLoginAttempt(user, AttemptType.FAILED)
-                    .onItem().transform(ignored -> false);
-        }
+        return validPassword ? handleSuccessfulLogin(user) : handleFailedLogin(user);
     }
 
-    public Uni<Void> persistLoginAttempt(User user, AttemptType attempt) {
-        LoginAttempts loginAttempts = new LoginAttempts(user,
+    private Uni<Boolean> handleSuccessfulLogin(User user) {
+        return persistLoginAttempt(user.id, AttemptType.SUCCESS)
+                .onItem().transform(ignored -> true);
+    }
+
+    private Uni<Boolean> handleFailedLogin(User user) {
+        return persistLoginAttempt(user.id, AttemptType.FAILED)
+                .onItem().transform(ignored -> false);
+    }
+
+    public Uni<Void> persistLoginAttempt(Long userId, AttemptType attempt) {
+        LoginAttempts loginAttempts = new LoginAttempts(userId,
                 attempt.name().equalsIgnoreCase(AttemptType.SUCCESS.name()));
 
         return Panache.withTransaction(() -> PanacheEntityBase.persist(loginAttempts))
                 .onItem().transform(success -> {
-                    log.info("Persisting user login attempt data, Result: {}, email: {}",attempt, user.getEmail());
+                    log.info("Persisting user login attempt data, Result: {}, userId: {}",attempt, userId);
                     return Uni.createFrom().voidItem();
                 })
                 .onFailure().transform(ex -> {
-                    log.error("Unable to persist user login attempt, email: {}", user.getEmail());
+                    log.error("Unable to persist user login attempt, userId: {}", userId);
                     throw new UnableToPresistException(Errors.UNABLE_TO_PERSIST_LOGIN_ATTEMPT_DETAILS + ex.getMessage());
                 })
                 .replaceWithVoid();
     }
 
-    public Uni<Void> persistToken(User user, String refreshToken, LocalDateTime expiration) {
-        Token token = new Token(user, refreshToken, expiration);
+    public Uni<Void> persistToken(Long userId, String refreshToken, LocalDateTime expiration) {
+        Token token = new Token(userId, refreshToken, expiration);
         return Panache.withTransaction(() -> PanacheEntityBase.persist(token))
                 .onItem().transform(success -> {
-                    log.info("Persisting refresh token details for user: {}", user.getEmail());
+                    log.info("Persisting refresh token details for userId: {}", userId);
                     return Uni.createFrom().voidItem();
                 }).onFailure().transform(ex -> {
-                    log.error("Unable to persist refresh token for user: {}", user.getEmail());
+                    log.error("Unable to persist refresh token for userId: {}", userId);
                     throw new UnableToPresistException(Errors.UNABLE_TO_PERSIST_TOKEN_DETAILS + ex.getMessage());
                 }).replaceWithVoid();
     }
+
+    public Uni<User> findByUserId(Long userId) {
+        return Panache.withTransaction(() -> User.findById(userId))
+                .onItem().transform(User.class::cast)
+                .onFailure().invoke(ex -> log.error("Invalid access token, user Id : {} not found", userId))
+                .onFailure().transform(ex -> new InvalidAccessTokenException(Errors.INVALID_ACCESS_TOKEN));
+    }
+
+
 }
