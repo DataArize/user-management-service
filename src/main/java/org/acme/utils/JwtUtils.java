@@ -11,11 +11,9 @@ import java.util.stream.Collectors;
 @UtilityClass
 public class JwtUtils {
 
-
-
     public static String generateAccessToken(User user, long expiration) {
         return Jwt.issuer("https://houseofllm.com")
-                .subject(user.getEmail())
+                .subject(String.valueOf(user.id))
                 .upn(user.getEmail())
                 .groups(user.getRoles().stream().map(Role::getRoleName).collect(Collectors.toSet()))
                 .issuedAt(Instant.now())
@@ -25,7 +23,8 @@ public class JwtUtils {
 
     public static String generateRefreshToken(User user, long expiration) {
         return Jwt.issuer("https://houseofllm.com")
-                .subject(user.getEmail())
+                .subject(String.valueOf(user.id))
+                .groups(user.getRoles().stream().map(Role::getRoleName).collect(Collectors.toSet()))
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(expiration))
                 .sign();

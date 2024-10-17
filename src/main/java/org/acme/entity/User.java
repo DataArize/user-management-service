@@ -3,16 +3,12 @@ package org.acme.entity;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
 import org.acme.constants.AccountRole;
 import org.acme.constants.AccountStatus;
-import org.acme.constants.DataValidation;
 import org.acme.model.Auth;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.validator.constraints.Length;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -51,6 +47,13 @@ public class User extends PanacheEntity {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private List<Role> roles = new ArrayList<>();
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "users")
+    private List<LoginAttempts> loginAttempts;
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "users")
+    private List<Token> tokens;
+
 
     public User() {
         this.roles.add(new Role(AccountRole.USER.name()));

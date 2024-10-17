@@ -28,7 +28,6 @@ public class AuthResource {
 
     @POST
     @Path("/register")
-    @WithTransaction
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Response> registerUser(@Valid Auth authRequest) {
