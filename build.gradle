@@ -20,6 +20,7 @@ dependencies {
     implementation 'com.password4j:password4j:1.8.2'
     implementation 'io.quarkus:quarkus-smallrye-jwt:3.15.1'
     implementation 'io.quarkus:quarkus-elytron-security:3.15.1'
+    implementation 'io.quarkus:quarkus-mailer:3.15.1'
     compileOnly 'org.projectlombok:lombok:1.18.34'
     annotationProcessor 'org.projectlombok:lombok:1.18.34'
     testImplementation 'io.quarkus:quarkus-junit5-mockito:3.15.1'

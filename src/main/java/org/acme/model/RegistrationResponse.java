@@ -4,18 +4,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.acme.entity.User;
 
-import java.io.Serializable;
-
 @Data
 @NoArgsConstructor
-public class Auth implements Serializable {
+public class RegistrationResponse {
 
     private String email;
-    private String password;
     private String firstName;
     private String lastName;
 
-    public Auth(User user) {
+    public RegistrationResponse(User user) {
         this.email = user.getEmail();
         this.firstName = user.getFirstName();
         this.lastName = user.getLastName();

@@ -5,9 +5,10 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 import org.acme.constants.AccountRole;
 import org.acme.constants.AccountStatus;
-import org.acme.model.Auth;
+import org.acme.model.RegistrationRequest;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
@@ -17,7 +18,7 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @Data
 @Entity
-@Table(name = "user", schema = "user_management")
+@Table(name = "users", schema = "user_management")
 public class User extends PanacheEntity {
 
 
@@ -37,7 +38,6 @@ public class User extends PanacheEntity {
     private AccountStatus status;
     @CreationTimestamp
     private LocalDateTime createAt = LocalDateTime.now();
-    private LocalDateTime lastLogin;
 
     @ManyToMany(cascade = CascadeType.PERSIST, fetch = FetchType.EAGER)
     @JoinTable(
@@ -52,7 +52,7 @@ public class User extends PanacheEntity {
         this.roles.add(new Role(AccountRole.USER.name()));
     }
 
-    public User(Auth authRequest) {
+    public User(RegistrationRequest authRequest) {
         this.email = authRequest.getEmail();
         this.passwordHash = authRequest.getPassword();
         this.firstName = authRequest.getFirstName();

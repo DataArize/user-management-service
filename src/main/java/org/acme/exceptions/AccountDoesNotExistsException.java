@@ -1,7 +1,12 @@
 package org.acme.exceptions;
 
+import lombok.Getter;
+
+@Getter
 public class AccountDoesNotExistsException extends RuntimeException{
-    public AccountDoesNotExistsException(String message) {
+    private final String errorCode;
+    public AccountDoesNotExistsException(String message, String errorCode) {
         super(message);
+        this.errorCode = errorCode;
     }
 }
